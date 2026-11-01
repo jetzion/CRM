@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-accent: oklch(0.52 0.2 270);
+  --color-accent-hover: oklch(0.46 0.2 270);
+  --color-canvas: oklch(0.975 0.012 270);
+}
+
+body {
+  @apply bg-canvas text-zinc-900 font-sans;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-accent;
+}
