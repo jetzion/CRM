@@ -34,12 +34,13 @@ This stack keeps the app straightforward to build and deploy while providing man
 ## Core data model
 
 - `profiles`: `id` (matches the authenticated user), `display_name`, `signature`, `created_at`.
-- `contacts`: `id`, `owner_id`, `first_name`, `last_name`, `email`, `phone`, `company`, `job_title`, `status`, `notes`, `created_at`, `updated_at`, `archived_at`.
+- `contacts`: `id`, `owner_id`, `first_name`, `last_name`, `email`, `phone`, `company`, `job_title`, `status`, `notes`, `tags` (text array), `created_at`, `updated_at`, `archived_at`.
 - `tasks`: `id`, `owner_id`, `contact_id`, `title`, `due_at`, `completed_at`, `notes`, `created_at`.
 - `campaigns`: `id`, `owner_id`, `name`, `goal`, `audience_notes`, `status`, `created_at`, `updated_at`.
 - `campaign_contacts`: `campaign_id`, `contact_id`, `owner_id`, `stage`, `notes`, `created_at` (tracks which contacts are included and their outreach progress).
 - `outreach_drafts`: `id`, `owner_id`, `contact_id` (nullable), `campaign_id` (nullable), `step`, `day_offset`, `subject`, `body`, `status` (`draft` or `approved`), `gmail_draft_id` (nullable), `created_at`, `updated_at`.
 - `gmail_connections`: `owner_id` (one per user), `email`, `refresh_token`, `created_at`.
+- `outreach_templates`: `id`, `owner_id`, `family_id`, `version`, `name`, `brief` (jsonb), `steps` (jsonb), `created_at`. Versions are immutable rows sharing `family_id`.
 
 Use UUID primary keys, foreign keys, sensible indexes (including owner and due date), and database constraints for required fields. Enable row-level security and policies that restrict reads and writes to rows whose `owner_id` equals the authenticated user. Ensure task, campaign-contact, and draft policies also verify access to related records. Store only the CRM context needed for a generation request, and do not expose model provider keys in browser code.
 
@@ -107,10 +108,15 @@ Use UUID primary keys, foreign keys, sensible indexes (including owner and due d
 - **Human-sounding AI drafts.** The prompt asks for plain, short emails and bans common AI phrasing, em dashes, bullet lists, and Title Case subjects.
 - **Delete campaigns** (with confirmation). Drafts and contact stages are deleted; tasks and Gmail drafts are kept.
 - **Clear chat** in the Outreach assistant resets the conversation and unsaved plans and keeps selected contacts and settings.
+- **Contact tags.** Free-text tags on contacts, a tag filter on the contact list, bulk add/remove for selected contacts, and a Manage tags page to rename or delete a tag everywhere. Tags compare case-insensitively.
+- **Email column** in the contact list, next to job title and company.
+- **Saved outreach (templates).** "Save as template" on your own email or an AI plan stores the brief and email steps, with contact details turned into placeholders. Templates can be edited (each save adds a new version; old versions are kept), deleted, and used to start a new campaign as-is or personalized by the AI.
+- **Large groups.** Above 10 selected contacts the AI sees no contact details and writes one shared draft per step with placeholders, which are filled in per contact on save.
+- **Approve all** on a campaign approves every draft that still needs review, after confirmation.
 
 ### Ideas not yet built
 - Remove a Gmail draft when its CRM draft is unapproved or deleted, or sync later edits.
-- Placeholders in AI-generated drafts and in the campaign name field.
+- Placeholders in personalized AI drafts (10 or fewer contacts) and in the campaign name field.
 
 ## Definition of done
 
