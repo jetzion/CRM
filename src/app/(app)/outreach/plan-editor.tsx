@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { Button, Field, FormMessage, Input, Textarea } from "@/components/ui";
 import { fullName } from "@/lib/contacts";
-import type { OutreachPlan } from "@/lib/outreach";
+import { SHARED_CONTACT, type OutreachPlan } from "@/lib/outreach";
 import type { PickerContact } from "./workspace";
 
 type Props = {
   plan: OutreachPlan;
   contacts: Map<string, PickerContact>;
+  selectedCount: number;
   saving: boolean;
   saveError?: string;
   onChange: (plan: OutreachPlan) => void;
@@ -17,9 +18,10 @@ type Props = {
 };
 
 /** Editable view of a generated plan. Nothing is stored until the user clicks save. */
-export function PlanEditor({ plan, contacts, saving, saveError, onChange, onSave, onSaveTemplate }: Props) {
+export function PlanEditor({ plan, contacts, selectedCount, saving, saveError, onChange, onSave, onSaveTemplate }: Props) {
   const [taskChecked, setTaskChecked] = useState(() => plan.follow_up_tasks.map(() => true));
   const nameOf = (id: string) => {
+    if (id === SHARED_CONTACT) return `All ${selectedCount} selected contacts (placeholders filled in for each)`;
     const c = contacts.get(id);
     return c ? fullName(c) : "Unknown contact (will not be saved)";
   };

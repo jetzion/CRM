@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Input, Select } from "@/components/ui";
 import { contactStatuses, fullName } from "@/lib/contacts";
-import { MAX_CONTACTS } from "@/lib/outreach";
+import { isSharedMode, PERSONALIZE_LIMIT } from "@/lib/outreach";
 import { TagList } from "../contacts/tag-list";
 import type { PickerContact } from "./workspace";
 
@@ -30,7 +30,6 @@ export function ContactPicker({
       (!company || c.company === company) &&
       (!term || `${fullName(c)} ${c.company ?? ""}`.toLowerCase().includes(term)),
   );
-  const full = selected.length >= MAX_CONTACTS;
 
   function toggle(id: string) {
     onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
@@ -45,19 +44,25 @@ export function ContactPicker({
   function toggleTag(tag: string) {
     const ids = taggedIds(tag);
     if (tagOn(tag)) onChange(selected.filter((id) => !ids.includes(id)));
-    else onChange([...selected, ...ids.filter((id) => !selected.includes(id))].slice(0, MAX_CONTACTS));
+    else onChange([...selected, ...ids.filter((id) => !selected.includes(id))]);
   }
 
   function selectVisible() {
     const add = visible.map((c) => c.id).filter((id) => !selected.includes(id));
-    onChange([...selected, ...add].slice(0, MAX_CONTACTS));
+    onChange([...selected, ...add]);
   }
 
   return (
     <fieldset>
       <legend className="mb-2 text-sm font-medium text-zinc-700">
-        Contacts <span className="font-normal text-zinc-500">({selected.length}/{MAX_CONTACTS} selected)</span>
+        Contacts <span className="font-normal text-zinc-500">({selected.length} selected)</span>
       </legend>
+      {isSharedMode(selected.length) && (
+        <p className="mb-2 rounded-md bg-violet-50 px-3 py-2 text-sm text-violet-900">
+          More than {PERSONALIZE_LIMIT} contacts: the AI writes one email per step with placeholders like {"{{first_name}}"}, filled
+          in for each contact when you save.
+        </p>
+      )}
       <div className="mb-2 grid gap-2 sm:grid-cols-3">
         <Input aria-label="Filter contacts" placeholder="Filter by name" value={q} onChange={(e) => setQ(e.target.value)} />
         <Select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -111,7 +116,6 @@ export function ContactPicker({
                 <input
                   type="checkbox"
                   checked={checked}
-                  disabled={!checked && full}
                   onChange={() => toggle(c.id)}
                   className="size-4 accent-accent"
                 />

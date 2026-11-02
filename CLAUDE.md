@@ -29,6 +29,7 @@ Next.js 16 (App Router, Cache Components), React 19, Tailwind 4, Supabase (Postg
 - The app never sends email. Gmail integration only creates drafts.
 - Only approved drafts go to Gmail. AI drafts start as "draft"; drafts written by the user with "Skip AI Assists Review" are saved approved, with only placeholders filled in. Campaigns created from saved outreach start as "draft" too.
 - Contact email and phone are never sent to the AI (`AI_FIELDS`).
+- Above `PERSONALIZE_LIMIT` (10) selected contacts the AI sees no contact details and writes one shared draft per step (`contact_id` "all") with placeholders; `expandShared` fills them in per contact on save.
 - Server actions take ids from hidden form inputs, never `.bind()` (bound actions hang on no-JS posts).
 - Decide deterministic things in code, not in the prompt (for example the sign-off line). Free models follow conditional instructions unreliably.
 - Use `requireUser()` from `src/lib/supabase/server` in actions and pages; rely on RLS for ownership.

@@ -3,6 +3,7 @@ import { openrouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
 import {
   AI_FIELDS,
+  isSharedMode,
   outreachContextSchema,
   outreachPlanSchema,
   outreachTools as tools,
@@ -41,16 +42,20 @@ export async function POST(req: Request) {
 
   if (isRateLimited(userId)) return jsonError("You have reached the generation limit. Please wait a few minutes.", 429);
 
+  // Above the personalize limit the AI writes one shared draft and sees no contact details, so none are loaded.
+  const shared = isSharedMode(context.contactIds.length);
   const [{ data: contacts, error }, { data: sender }] = await Promise.all([
-    supabase
-      .from("contacts")
-      .select(`id, ${AI_FIELDS.map((f) => f.key).join(", ")}`)
-      .in("id", context.contactIds)
-      .overrideTypes<AiContact[]>(),
+    shared
+      ? { data: [] as AiContact[], error: null }
+      : supabase
+          .from("contacts")
+          .select(`id, ${AI_FIELDS.map((f) => f.key).join(", ")}`)
+          .in("id", context.contactIds)
+          .overrideTypes<AiContact[]>(),
     supabase.from("profiles").select("display_name, signature").eq("id", userId).single<Sender>(),
   ]);
   if (error) return jsonError("Could not load the selected contacts.", 500);
-  if (contacts.length !== new Set(context.contactIds).size) return jsonError("One or more contacts were not found.", 403);
+  if (!shared && contacts.length !== new Set(context.contactIds).size) return jsonError("One or more contacts were not found.", 403);
 
   const result = streamText({
     model: openrouter(MODELS[0]),

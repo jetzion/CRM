@@ -3,16 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { MAX_CONTACTS, outreachPlanSchema } from "@/lib/outreach";
+import { outreachPlanSchema } from "@/lib/outreach";
 import { requireUser } from "@/lib/supabase/server";
 
 const saveSchema = z.object({
   name: z.string().trim().min(1, "Give the campaign a name.").max(200),
   goal: z.string().trim().max(2000),
   audienceNotes: z.string().trim().max(2000),
-  contactIds: z.array(z.uuid()).min(1).max(MAX_CONTACTS),
+  contactIds: z.array(z.uuid()).min(1),
   plan: outreachPlanSchema,
-  taskIndexes: z.array(z.int().min(0)).max(50),
+  taskIndexes: z.array(z.int().min(0)),
   approved: z.boolean().default(false),
 });
 
@@ -163,4 +163,18 @@ export async function setContactStage(formData: FormData) {
     .eq("contact_id", contact_id);
   if (error) throw new Error("Could not update the stage.");
   revalidatePath(`/campaigns/${campaign_id}`);
+}
+
+/** Approves every draft in the campaign that still needs review. Approval never sends anything. */
+export async function approveAllDrafts(formData: FormData) {
+  const campaignId = z.uuid().parse(formData.get("campaign_id"));
+  const { supabase } = await requireUser();
+  const { error } = await supabase
+    .from("outreach_drafts")
+    .update({ status: "approved" })
+    .eq("campaign_id", campaignId)
+    .eq("status", "draft");
+  if (error) throw new Error("Could not approve the drafts.");
+  revalidatePath(`/campaigns/${campaignId}`);
+  revalidatePath("/campaigns");
 }

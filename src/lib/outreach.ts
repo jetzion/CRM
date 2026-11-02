@@ -1,7 +1,13 @@
 import { tool, type InferUITools, type UIDataTypes, type UIMessage } from "ai";
 import { z } from "zod";
 
-export const MAX_CONTACTS = 10;
+/** Up to this many contacts the AI writes a personalized email for each one; above it, one shared email per step. */
+export const PERSONALIZE_LIMIT = 10;
+
+/** The contact_id the AI uses for a shared draft or task meant for every selected contact. */
+export const SHARED_CONTACT = "all";
+
+export const isSharedMode = (contactCount: number) => contactCount > PERSONALIZE_LIMIT;
 
 /** Contact fields shared with the model. Email and phone are never sent. */
 export const AI_FIELDS = [
@@ -34,7 +40,7 @@ export const tones = ["friendly", "professional", "concise", "enthusiastic"] as 
 
 /** Campaign settings sent alongside each chat message. */
 export const outreachContextSchema = z.object({
-  contactIds: z.array(z.uuid()).min(1, "Select at least one contact.").max(MAX_CONTACTS),
+  contactIds: z.array(z.uuid()).min(1, "Select at least one contact."),
   goal: z.string().trim().min(1, "Describe the outreach goal.").max(1000),
   audience: z.string().trim().max(1000).default(""),
   valueProp: z.string().trim().max(1000).default(""),
@@ -63,12 +69,11 @@ export const outreachPlanSchema = z.object({
         drafts: z
           .array(
             z.object({
-              contact_id: z.string().describe("The id of the contact this email is for"),
+              contact_id: z.string().describe(`The id of the contact this email is for, or "${SHARED_CONTACT}" for one shared email`),
               subject: z.string().max(300),
               body: z.string().max(20000),
             }),
-          )
-          .max(MAX_CONTACTS),
+          ),
       }),
     )
     .min(1)
@@ -80,8 +85,7 @@ export const outreachPlanSchema = z.object({
         title: z.string().max(200),
         day_offset: z.int().min(0).max(365),
       }),
-    )
-    .max(50),
+    ),
 });
 
 export type OutreachPlan = z.infer<typeof outreachPlanSchema>;
@@ -96,3 +100,24 @@ export const outreachTools = {
 };
 
 export type OutreachUIMessage = UIMessage<never, UIDataTypes, InferUITools<typeof outreachTools>>;
+
+/**
+ * Replaces each shared draft and task with one per contact, filling in placeholders from that contact's values.
+ * Drafts and tasks already addressed to a specific contact are kept as they are.
+ */
+export function expandShared(plan: OutreachPlan, contacts: { id: string; values: Record<MergeField, string | null> }[]): OutreachPlan {
+  return {
+    ...plan,
+    steps: plan.steps.map((s) => ({
+      ...s,
+      drafts: s.drafts.flatMap((d) =>
+        d.contact_id !== SHARED_CONTACT
+          ? [d]
+          : contacts.map((c) => ({ contact_id: c.id, subject: personalize(d.subject, c.values), body: personalize(d.body, c.values) })),
+      ),
+    })),
+    follow_up_tasks: plan.follow_up_tasks.flatMap((t) =>
+      t.contact_id !== SHARED_CONTACT ? [t] : contacts.map((c) => ({ ...t, contact_id: c.id, title: personalize(t.title, c.values) })),
+    ),
+  };
+}

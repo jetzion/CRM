@@ -5,6 +5,7 @@ import { fullName } from "@/lib/contacts";
 import { requireUser } from "@/lib/supabase/server";
 import { TaskForm } from "../../tasks/task-form";
 import { setContactStage, setDraftApproved } from "../actions";
+import { ApproveAllButton } from "../approve-all-button";
 import { CampaignForm } from "../campaign-form";
 import { DraftEditor } from "../draft-editor";
 import { DeleteCampaignButton } from "../delete-campaign-button";
@@ -56,6 +57,7 @@ export default async function CampaignPage({ params, searchParams }: PageProps<"
 
   const steps = [...new Set((drafts ?? []).map((d) => d.step ?? 1))].sort((a, b) => a - b);
   const members = campaign.campaign_contacts;
+  const needsReview = (drafts ?? []).filter((d) => d.status === "draft").length;
 
   return (
     <>
@@ -66,7 +68,10 @@ export default async function CampaignPage({ params, searchParams }: PageProps<"
           Approving a draft marks it as reviewed. SimpleCRM never sends email. Create Gmail drafts to copy approved drafts to Gmail, then finish and send them there.
           Edits made here after a draft is in Gmail are not copied over.
         </p>
-        {(drafts ?? []).length > 0 && <GmailDraftsButton campaignId={campaign.id} />}
+        <div className="flex flex-wrap items-start gap-2">
+          {needsReview > 0 && <ApproveAllButton campaignId={campaign.id} count={needsReview} />}
+          {(drafts ?? []).length > 0 && <GmailDraftsButton campaignId={campaign.id} />}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">

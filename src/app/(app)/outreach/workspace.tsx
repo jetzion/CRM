@@ -6,7 +6,7 @@ import { DefaultChatTransport } from "ai";
 import { useMemo, useState, useTransition } from "react";
 import { Button, Card, FormMessage, Input } from "@/components/ui";
 import { fullName, type Contact } from "@/lib/contacts";
-import { AI_FIELDS, MERGE_FIELDS, personalize, usedMergeFields, type MergeField, type OutreachContext, type OutreachPlan, type OutreachUIMessage } from "@/lib/outreach";
+import { AI_FIELDS, expandShared, isSharedMode, MERGE_FIELDS, personalize, SHARED_CONTACT, usedMergeFields, type MergeField, type OutreachContext, type OutreachPlan, type OutreachUIMessage } from "@/lib/outreach";
 import { planToSteps, type Template, type TemplateStep } from "@/lib/templates";
 import { saveCampaign } from "../campaigns/actions";
 import { saveTemplate, type SaveTemplateResult } from "./actions";
@@ -41,7 +41,7 @@ export function OutreachWorkspace({ contacts, initialSelected, senderName, templ
   const [input, setInput] = useState("");
   const [formError, setFormError] = useState<string>();
   const [edits, setEdits] = useState<Record<string, OutreachPlan>>({});
-  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+  const [saveErrors, setSaveErrors] = useState<Record<string, string | undefined>>({});
   const [savingId, setSavingId] = useState<string>();
   const [templateResult, setTemplateResult] = useState<SaveTemplateResult>();
   const [, startTransition] = useTransition();
@@ -93,8 +93,8 @@ export function OutreachWorkspace({ contacts, initialSelected, senderName, templ
     return c ? mergeValues(c) : {};
   };
 
-  /** Why the user's own email cannot be filled in for every selected contact, if anything. */
-  function ownDraftProblem(text: string) {
+  /** Why placeholders in this text cannot be filled in for every selected contact, if anything. */
+  function placeholderProblem(text: string) {
     if (selected.length === 0) return "Select at least one contact.";
     const fields = usedMergeFields(text);
     const unknown = fields.filter((f) => !(MERGE_FIELDS as readonly string[]).includes(f));
@@ -104,12 +104,13 @@ export function OutreachWorkspace({ contacts, initialSelected, senderName, templ
       const missing = (fields as MergeField[]).filter((f) => !mergeValues(c)[f]);
       return missing.length ? [`${fullName(c)} (no ${missing.join(", ")})`] : [];
     });
-    if (gaps.length) return `Missing details: ${gaps.join("; ")}. Fill them in on the contact or remove the placeholder.`;
+    const shown = gaps.length > 5 ? [...gaps.slice(0, 5), `${gaps.length - 5} more`] : gaps;
+    if (gaps.length) return `Missing details: ${shown.join("; ")}. Fill them in on the contact or remove the placeholder.`;
   }
 
   /** Saves emails personalized per contact but otherwise exactly as written. No AI involved. `approved` skips review. */
   function saveOwnSteps(steps: TemplateStep[], { approved, campaignName }: { approved: boolean; campaignName?: string }) {
-    const problem = ownDraftProblem(steps.map((s) => `${s.subject}\n${s.body}`).join("\n"));
+    const problem = placeholderProblem(steps.map((s) => `${s.subject}\n${s.body}`).join("\n"));
     setFormError(problem);
     if (problem) return;
     const [first] = selectedContacts;
@@ -157,7 +158,17 @@ export function OutreachWorkspace({ contacts, initialSelected, senderName, templ
     startTransition(async () => setTemplateResult(await saveTemplate({ name, brief: settings, steps })));
   }
 
+  /** Saves a plan as a campaign. Shared drafts and tasks become one per selected contact, with placeholders filled in. */
   function save(toolCallId: string, plan: OutreachPlan, taskIndexes: number[]) {
+    const chosen = { ...plan, follow_up_tasks: taskIndexes.map((i) => plan.follow_up_tasks[i]) };
+    const sharedText = [
+      ...chosen.steps.flatMap((s) => s.drafts.filter((d) => d.contact_id === SHARED_CONTACT).map((d) => `${d.subject}\n${d.body}`)),
+      ...chosen.follow_up_tasks.filter((t) => t.contact_id === SHARED_CONTACT).map((t) => t.title),
+    ].join("\n");
+    const problem = sharedText ? placeholderProblem(sharedText) : undefined;
+    setSaveErrors((e) => ({ ...e, [toolCallId]: problem }));
+    if (problem) return;
+    const full = expandShared(chosen, selectedContacts.map((c) => ({ id: c.id, values: mergeValues(c) })));
     setSavingId(toolCallId);
     startTransition(async () => {
       const result = await saveCampaign({
@@ -165,8 +176,8 @@ export function OutreachWorkspace({ contacts, initialSelected, senderName, templ
         goal: settings.goal,
         audienceNotes: settings.audience,
         contactIds: selected,
-        plan,
-        taskIndexes,
+        plan: full,
+        taskIndexes: full.follow_up_tasks.map((_, i) => i),
       });
       setSaveErrors((e) => ({ ...e, [toolCallId]: result.error }));
       setSavingId(undefined);
@@ -184,11 +195,18 @@ export function OutreachWorkspace({ contacts, initialSelected, senderName, templ
 
         <div className="rounded-md bg-zinc-100 p-3 text-sm text-zinc-700">
           <p className="font-medium">Shared with the AI</p>
-          <p className="mt-1">
-            {AI_FIELDS.map((f) => f.label).join(", ")} for {selected.length} selected contact{selected.length === 1 ? "" : "s"}, plus
-            the settings above. Email addresses and phone numbers are never shared.
-          </p>
-          {selectedContacts.length > 0 && (
+          {isSharedMode(selected.length) ? (
+            <p className="mt-1">
+              Only the number of selected contacts ({selected.length}) and the settings above. Contact details are not shared;
+              placeholders are filled in for each contact when you save.
+            </p>
+          ) : (
+            <p className="mt-1">
+              {AI_FIELDS.map((f) => f.label).join(", ")} for {selected.length} selected contact{selected.length === 1 ? "" : "s"}, plus
+              the settings above. Email addresses and phone numbers are never shared.
+            </p>
+          )}
+          {selectedContacts.length > 0 && !isSharedMode(selected.length) && (
             <ul className="mt-2 space-y-0.5">
               {selectedContacts.map((c) => {
                 const missing = [!c.company && "company", !c.job_title && "job title"].filter(Boolean);
@@ -251,6 +269,7 @@ export function OutreachWorkspace({ contacts, initialSelected, senderName, templ
                       key={p.toolCallId}
                       plan={edits[p.toolCallId] ?? (p.input as OutreachPlan)}
                       contacts={byId}
+                      selectedCount={selected.length}
                       saving={savingId === p.toolCallId}
                       saveError={saveErrors[p.toolCallId]}
                       onChange={(plan) => setEdits((e) => ({ ...e, [p.toolCallId]: plan }))}
