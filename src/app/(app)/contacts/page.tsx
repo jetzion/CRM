@@ -126,8 +126,9 @@ export default async function ContactsPage({ searchParams }: PageProps<"/contact
                       <span className="mt-1 block empty:hidden"><TagList tags={c.tags} /></span>
                     </span>
                     <span className="min-w-40 flex-1 text-sm text-zinc-600">
-                      {[c.job_title, c.company].filter(Boolean).join(" at ") || c.email || " "}
+                      {[c.job_title, c.company].filter(Boolean).join(" at ") || " "}
                     </span>
+                    <span className="min-w-40 flex-1 truncate text-sm text-zinc-600">{c.email || " "}</span>
                     <StatusBadge status={c.status} />
                   </Link>
                 </li>
